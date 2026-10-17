@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Reading Log</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<meta name="theme-color" content="#0e6b66">
+<link href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,500;7..72,700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f1f4f3;--card:#fff;--ink:#16232b;--mute:#5b6b72;--line:#d6dedc;--acc:#0e6b66;--accink:#fff;--warm:#b4532a;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1719;--card:#17232a;--ink:#e8efee;--mute:#93a5a9;--line:#2a3a41;--acc:#4fc3bb;--accink:#07211f;--warm:#f0956a}}
+:root[data-theme="dark"]{--bg:#0f1719;--card:#17232a;--ink:#e8efee;--mute:#93a5a9;--line:#2a3a41;--acc:#4fc3bb;--accink:#07211f;--warm:#f0956a}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:560px;margin:0 auto;padding:16px}
+h1,h2,.serif{font-family:Literata,Georgia,serif}
+h1{font-size:28px;margin:8px 0 12px}
+h2{font-size:20px;margin:0 0 8px}
+.streak{background:var(--acc);color:var(--accink);border-radius:14px;padding:14px 16px;margin-bottom:14px}
+.streak b{font-family:Literata,Georgia,serif;font-size:34px;line-height:1}
+.streak p{margin:6px 0 0}
+.tabs{display:flex;gap:6px;margin-bottom:14px}
+.tabs button{flex:1;padding:10px;border:1px solid var(--line);background:transparent;color:var(--ink);border-radius:10px;font:inherit;font-weight:600}
+.tabs button[aria-selected="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+label{display:block;font-size:14px;color:var(--mute);margin:10px 0 4px}
+input,textarea{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font:inherit}
+input[type=checkbox]{width:auto;margin-right:8px}
+.row{display:flex;gap:10px}.row>div{flex:1}
+.chk{display:flex;align-items:center;margin-top:12px;color:var(--ink);font-size:15px}
+.btn{width:100%;margin-top:14px;padding:12px;border:0;border-radius:10px;background:var(--acc);color:var(--accink);font:inherit;font-weight:700}
+.link{background:none;border:0;color:var(--mute);font:inherit;font-size:13px;padding:4px 0;text-decoration:underline}
+:focus-visible{outline:3px solid var(--warm);outline-offset:2px}
+.entry{padding:10px 0;border-top:1px solid var(--line)}
+.entry:first-child{border-top:0}
+.meta{color:var(--mute);font-size:14px}
+.note{margin:2px 0 0;font-style:italic}
+.book{width:100%;text-align:left;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px;color:var(--ink);font:inherit;display:block}
+.book .t{font-family:Literata,Georgia,serif;font-weight:700;font-size:18px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0}
+.stats div{background:var(--bg);border-radius:10px;padding:10px;text-align:center}
+.stats b{display:block;font-family:Literata,Georgia,serif;font-size:22px}
+.stats span{font-size:12px;color:var(--mute)}
+.empty{color:var(--mute);text-align:center;padding:24px 8px}
+</style>
+</head>
+<body>
+<main>
+<h1>Reading log</h1>
+<div id="streak" class="streak"></div>
+<div class="tabs" role="tablist">
+<button role="tab" id="tab-log" aria-selected="true">Log</button>
+<button role="tab" id="tab-done" aria-selected="false">Finished</button>
+</div>
+<section id="view"></section>
+</main>
+<script>
+const KEY="readinglog.v1";
+let S={entries:[],finished:{}};
+try{const r=localStorage.getItem(KEY);if(r)S=JSON.parse(r)}catch(e){}
+S.rem=S.rem||{on:false,time:"20:00",last:""};
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+const $=s=>document.querySelector(s);
+const esc=t=>String(t).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const pad=n=>String(n).padStart(2,"0");
+function todayStr(){const d=new Date();return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())}
+function dnum(s){const [y,m,d]=s.split("-").map(Number);return Date.UTC(y,m-1,d)/864e5}
+function fmt(s){const [y,m,d]=s.split("-").map(Number);return new Date(y,m-1,d).toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"})}
+let tab="log",open=null;
+
+function streak(){
+  const days=new Set(S.entries.map(e=>e.date));
+  const t=dnum(todayStr());
+  let cur=days.has(todayStr())?t:t-1,n=0;
+  while(days.has(fmtNum(cur))){n++;cur--}
+  return {n,doneToday:days.has(todayStr())};
+}
+function fmtNum(x){const d=new Date(x*864e5);return d.getUTCFullYear()+"-"+pad(d.getUTCMonth()+1)+"-"+pad(d.getUTCDate())}
+
+function renderStreak(){
+  const {n,doneToday}=streak();
+  let msg;
+  if(!S.entries.length)msg="Log your first reading session to start a streak.";
+  else if(doneToday)msg=n>=7?"A full week or more. Keep it going.":n>=3?"Nice run. See you tomorrow.":"Logged today. Good start.";
+  else msg=n?`You haven’t read today. Log a few pages to keep your ${n}-day streak.`:"You haven’t read today. A few pages is enough to start again.";
+  $("#streak").innerHTML=`<b>${n}</b> day streak<p>${msg}</p>`;
+}
+
+function renderLog(){
+  const books=[...new Set(S.entries.map(e=>e.book))];
+  const recent=[...S.entries].sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id).slice(0,15);
+  $("#view").innerHTML=`
+  <form class="card" id="f" autocomplete="off">
+    <h2>Add reading</h2>
+    <label for="book">Book</label>
+    <input id="book" list="bl" required placeholder="Title">
+    <datalist id="bl">${books.map(b=>`<option value="${esc(b)}">`).join("")}</datalist>
+    <div class="row">
+      <div><label for="pg">Pages read</label><input id="pg" type="number" min="1" required inputmode="numeric"></div>
+      <div><label for="dt">Date</label><input id="dt" type="date" required value="${todayStr()}"></div>
+    </div>
+    <label for="nt">One-line thought</label>
+    <input id="nt" maxlength="200" placeholder="Optional">
+    <label class="chk"><input id="fin" type="checkbox">I finished this book</label>
+    <button class="btn" type="submit">Save entry</button>
+  </form>
+  <div class="card"><h2>Recent</h2>
+  ${recent.length?recent.map(e=>`<div class="entry"><div><b>${esc(e.book)}</b> <span class="meta">${e.pages} pages, ${fmt(e.date)}</span></div>${e.note?`<p class="note">${esc(e.note)}</p>`:""}<button class="link" data-del="${e.id}">Delete</button></div>`).join(""):`<div class="empty">No entries yet. Add your first one above.</div>`}
+  </div>
+  <div class="card"><h2>Reminders</h2>
+    <label class="chk" style="margin-top:0"><input id="remon" type="checkbox" ${S.rem.on?"checked":""}>Remind me to read each day</label>
+    <label for="remtime">Remind me at</label>
+    <input id="remtime" type="time" value="${S.rem.time}">
+    <button class="btn" style="margin-top:10px" id="remtest" type="button">Send a test notification</button>
+    <p class="meta" id="remst" role="status" style="margin:8px 0 0"></p>
+  </div>
+  <div class="card"><h2>Backup</h2>
+    <p class="meta" style="margin:0 0 8px">Your data lives in this browser only. Export a file to keep a copy or move to another device.</p>
+    <div class="row">
+      <button class="btn" style="margin-top:0" id="exj">Export backup</button>
+      <button class="btn" style="margin-top:0" id="exc">Export CSV</button>
+    </div>
+    <label for="imp">Import backup (.json)</label>
+    <input id="imp" type="file" accept=".json,application/json">
+    <p class="meta" id="bmsg" role="status" style="margin:8px 0 0"></p>
+  </div>`;
+  $("#f").onsubmit=ev=>{
+    ev.preventDefault();
+    const book=$("#book").value.trim(),pages=parseInt($("#pg").value,10),date=$("#dt").value;
+    if(!book||!pages||!date)return;
+    const was=streak().doneToday;
+    S.entries.push({id:Date.now(),book,pages,date,note:$("#nt").value.trim()});
+    if($("#fin").checked)S.finished[book]=date;
+    save();render();
+    const n=streak().n;
+    if(!was&&[3,7,14,30,60,100].includes(n))notify(n+"-day streak","You’ve read "+n+" days in a row. Nice work.");
+  };
+  bindRem();
+  const msg=t=>{$("#bmsg").textContent=t};
+  function dl(name,text,type){
+    try{
+      const a=document.createElement("a");
+      a.href=URL.createObjectURL(new Blob([text],{type}));
+      a.download=name;document.body.appendChild(a);a.click();a.remove();
+      msg("Saved "+name+". Check your Downloads folder.");
+    }catch(e){msg("Download didn’t work here. Open the hosted copy of this page and try again.")}
+  }
+  $("#exj").onclick=()=>dl("reading-log-backup-"+todayStr()+".json",JSON.stringify(S,null,2),"application/json");
+  $("#exc").onclick=()=>{
+    const q=v=>'"'+String(v==null?"":v).replace(/"/g,'""')+'"';
+    const rows=[["date","book","pages","note","finished_on"]];
+    [...S.entries].sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id)
+      .forEach(e=>rows.push([e.date,e.book,e.pages,e.note,S.finished[e.book]||""]));
+    dl("reading-log-"+todayStr()+".csv",rows.map(r=>r.map(q).join(",")).join("\n"),"text/csv");
+  };
+  $("#imp").onchange=ev=>{
+    const f=ev.target.files[0];if(!f)return;
+    const r=new FileReader();
+    r.onload=()=>{
+      try{
+        const d=JSON.parse(r.result);
+        if(!d||!Array.isArray(d.entries))throw 0;
+        const ids=new Set(S.entries.map(e=>e.id));let added=0;
+        d.entries.forEach(e=>{
+          if(e&&e.book&&e.date&&e.pages>0&&!ids.has(e.id)){S.entries.push({id:e.id||Date.now()+added,book:String(e.book),pages:+e.pages,date:String(e.date),note:String(e.note||"")});added++}
+        });
+        Object.entries(d.finished||{}).forEach(([k,v])=>{if(!S.finished[k])S.finished[k]=v});
+        save();render();
+        $("#bmsg").textContent="Imported "+added+" new entries.";
+      }catch(e){msg("That file isn’t a Reading log backup.")}
+    };
+    r.readAsText(f);
+  };
+  document.querySelectorAll("[data-del]").forEach(b=>b.onclick=()=>{
+    S.entries=S.entries.filter(e=>e.id!==+b.dataset.del);save();render();
+  });
+}
+
+function bookStats(title){
+  const es=S.entries.filter(e=>e.book===title).sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id);
+  const pages=es.reduce((s,e)=>s+e.pages,0);
+  const start=es[0].date,end=S.finished[title]||es[es.length-1].date;
+  const days=Math.max(1,dnum(end)-dnum(start)+1);
+  return {es,pages,start,end,days,avg:Math.round(pages/days*10)/10};
+}
+
+function renderDone(){
+  const titles=Object.keys(S.finished).filter(t=>S.entries.some(e=>e.book===t));
+  if(open&&titles.includes(open)){
+    const b=bookStats(open);
+    $("#view").innerHTML=`<button class="link" id="back">Back to finished books</button>
+    <div class="card"><h2>${esc(open)}</h2><div class="meta">${fmt(b.start)} to ${fmt(b.end)}</div>
+    <div class="stats"><div><b>${b.days}</b><span>days to finish</span></div><div><b>${b.pages}</b><span>pages logged</span></div><div><b>${b.avg}</b><span>pages per day</span></div></div>
+    ${b.es.map(e=>`<div class="entry"><div class="meta">${fmt(e.date)}, ${e.pages} pages</div>${e.note?`<p class="note">${esc(e.note)}</p>`:""}</div>`).join("")}
+    <button class="link" id="unfin">Mark as not finished</button></div>`;
+    $("#back").onclick=()=>{open=null;render()};
+    $("#unfin").onclick=()=>{delete S.finished[open];open=null;save();render()};
+    return;
+  }
+  open=null;
+  if(!titles.length){$("#view").innerHTML=`<div class="empty">No finished books yet. Tick “I finished this book” when you save your last session.</div>`;return}
+  const all=titles.map(bookStats);
+  const avg=Math.round(all.reduce((s,b)=>s+b.pages,0)/all.reduce((s,b)=>s+b.days,0)*10)/10;
+  $("#view").innerHTML=`<div class="card"><div class="stats" style="margin:0"><div><b>${titles.length}</b><span>books finished</span></div><div><b>${avg}</b><span>avg pages per day</span></div><div><b>${Math.round(all.reduce((s,b)=>s+b.days,0)/titles.length)}</b><span>avg days per book</span></div></div></div>`+
+  titles.sort((a,b)=>S.finished[b].localeCompare(S.finished[a])).map(t=>{const b=bookStats(t);return `<button class="book" data-t="${esc(t)}"><div class="t">${esc(t)}</div><div class="meta">Finished ${fmt(S.finished[t])}, ${b.days} days, ${b.avg} pages per day</div></button>`}).join("");
+  document.querySelectorAll("[data-t]").forEach(b=>b.onclick=()=>{open=b.dataset.t;render()});
+}
+
+function render(){
+  renderStreak();
+  $("#tab-log").setAttribute("aria-selected",tab==="log");
+  $("#tab-done").setAttribute("aria-selected",tab==="done");
+  tab==="log"?renderLog():renderDone();
+}
+$("#tab-log").onclick=()=>{tab="log";render()};
+$("#tab-done").onclick=()=>{tab="done";open=null;render()};
+
+async function notify(title,body){
+  try{
+    if(!("Notification" in window)||Notification.permission!=="granted")return false;
+    const reg=navigator.serviceWorker&&await navigator.serviceWorker.getRegistration();
+    if(reg)await reg.showNotification(title,{body,icon:"icon-192.png",badge:"icon-192.png",tag:"readinglog"});
+    else new Notification(title,{body});
+    return true;
+  }catch(e){return false}
+}
+function checkReminder(){
+  const r=S.rem;if(!r||!r.on)return;
+  const now=new Date(),t=pad(now.getHours())+":"+pad(now.getMinutes());
+  if(t<r.time||r.last===todayStr()||streak().doneToday)return;
+  r.last=todayStr();save();
+  const n=streak().n;
+  notify("Time to read",n?"Keep your "+n+"-day streak going.":"A few pages is enough to start.");
+}
+function bindRem(){
+  const r=S.rem,st=$("#remst");
+  const show=()=>{st.textContent=!("Notification" in window)?"This browser doesn’t support notifications.":Notification.permission==="denied"?"Notifications are blocked. Allow them in your browser’s site settings.":r.on?"Reminder set for "+r.time+". It fires while the app is open or running in the background.":"Reminders are off."};
+  $("#remon").onchange=async e=>{
+    if(e.target.checked){
+      let p="denied";try{p=await Notification.requestPermission()}catch(x){}
+      if(p!=="granted"){e.target.checked=false;r.on=false}else r.on=true;
+    }else r.on=false;
+    save();show();
+  };
+  $("#remtime").onchange=e=>{r.time=e.target.value||"20:00";r.last="";save();show()};
+  $("#remtest").onclick=async()=>{
+    try{await Notification.requestPermission()}catch(x){}
+    const ok=await notify("Reading log","Test reminder. Notifications are working.");
+    if(!ok)st.textContent="Couldn’t show a notification. Check that notifications are allowed for this site.";
+  };
+  show();
+}
+setInterval(checkReminder,30000);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)checkReminder()});
+if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
+render();
+checkReminder();
+</script>
+</body>
+</html>
