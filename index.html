@@ -28,9 +28,9 @@ h2{font-size:20px;margin:0 0 8px}
 .tabs button[aria-selected="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
 label{display:block;font-size:14px;color:var(--mute);margin:10px 0 4px}
-input,textarea{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font:inherit}
+input,textarea,select{width:100%;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font:inherit}
 input[type=checkbox]{width:auto;margin-right:8px}
-.row{display:flex;gap:10px}.row>div{flex:1}
+.row{display:flex;gap:10px}.row>div{flex:1}.row>select{flex:1;min-width:0}
 .chk{display:flex;align-items:center;margin-top:12px;color:var(--ink);font-size:15px}
 .btn{width:100%;margin-top:14px;padding:12px;border:0;border-radius:10px;background:var(--acc);color:var(--accink);font:inherit;font-weight:700}
 .link{background:none;border:0;color:var(--mute);font:inherit;font-size:13px;padding:4px 0;text-decoration:underline}
@@ -99,10 +99,12 @@ function renderLog(){
     <label for="book">Book</label>
     <input id="book" list="bl" required placeholder="Title">
     <datalist id="bl">${books.map(b=>`<option value="${esc(b)}">`).join("")}</datalist>
-    <div class="row">
-      <div><label for="pg">Pages read</label><input id="pg" type="number" min="1" required inputmode="numeric"></div>
-      <div><label for="dt">Date</label><input id="dt" type="date" required value="${todayStr()}"></div>
-    </div>
+    <label for="pg">Pages read</label>
+    <input id="pg" type="number" min="1" required inputmode="numeric">
+    <label for="dm">Date</label>
+    <input id="dt" type="hidden" value="${todayStr()}">
+    <div class="row" style="gap:6px"><select id="dm" aria-label="Month"></select><select id="dd" aria-label="Day"></select><select id="dy" aria-label="Year"></select></div>
+    <div><button type="button" class="link" data-d="0">Today</button> <button type="button" class="link" data-d="1">Yesterday</button> <button type="button" class="link" data-d="2">2 days ago</button></div>
     <label for="nt">One-line thought</label>
     <input id="nt" maxlength="200" placeholder="Optional">
     <label class="chk"><input id="fin" type="checkbox">I finished this book</label>
@@ -114,7 +116,7 @@ function renderLog(){
   <div class="card"><h2>Reminders</h2>
     <label class="chk" style="margin-top:0"><input id="remon" type="checkbox" ${S.rem.on?"checked":""}>Remind me to read each day</label>
     <label for="remtime">Remind me at</label>
-    <input id="remtime" type="time" value="${S.rem.time}">
+    <select id="remtime">${timeOpts()}</select>
     <button class="btn" style="margin-top:10px" id="remtest" type="button">Send a test notification</button>
     <p class="meta" id="remst" role="status" style="margin:8px 0 0"></p>
   </div>
@@ -140,6 +142,8 @@ function renderLog(){
     if(!was&&[3,7,14,30,60,100].includes(n))notify(n+"-day streak","You’ve read "+n+" days in a row. Nice work.");
   };
   bindRem();
+  initDate();
+  document.querySelectorAll("[data-d]").forEach(b=>b.onclick=()=>setDate(fmtNum(dnum(todayStr())-(+b.dataset.d))));
   const msg=t=>{$("#bmsg").textContent=t};
   function dl(name,text,type){
     try{
@@ -219,6 +223,32 @@ function render(){
 $("#tab-log").onclick=()=>{tab="log";render()};
 $("#tab-done").onclick=()=>{tab="done";open=null;render()};
 
+function setDate(v){
+  const [y,m,d]=v.split("-").map(Number);
+  $("#dy").value=y;$("#dm").value=m;fillDays();$("#dd").value=d;$("#dt").value=v;
+}
+function fillDays(){
+  const y=+$("#dy").value,m=+$("#dm").value,n=new Date(y,m,0).getDate(),cur=+$("#dd").value||1;
+  $("#dd").innerHTML=Array.from({length:n},(_,i)=>`<option value="${i+1}">${i+1}</option>`).join("");
+  $("#dd").value=Math.min(cur,n);
+}
+function initDate(){
+  const mn=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"],y0=new Date().getFullYear();
+  $("#dm").innerHTML=mn.map((n,i)=>`<option value="${i+1}">${n}</option>`).join("");
+  $("#dy").innerHTML=[y0-2,y0-1,y0,y0+1].map(y=>`<option value="${y}">${y}</option>`).join("");
+  const upd=()=>{fillDays();$("#dt").value=$("#dy").value+"-"+pad($("#dm").value)+"-"+pad($("#dd").value)};
+  $("#dm").onchange=$("#dy").onchange=upd;
+  $("#dd").onchange=()=>{$("#dt").value=$("#dy").value+"-"+pad($("#dm").value)+"-"+pad($("#dd").value)};
+  setDate(todayStr());
+}
+function timeOpts(){
+  let o="";
+  for(let h=0;h<24;h++)for(let m=0;m<60;m+=15){
+    const v=pad(h)+":"+pad(m);
+    o+=`<option value="${v}"${v===S.rem.time?" selected":""}>${h%12||12}:${pad(m)} ${h<12?"AM":"PM"}</option>`;
+  }
+  return o;
+}
 async function notify(title,body){
   try{
     if(!("Notification" in window)||Notification.permission!=="granted")return false;
